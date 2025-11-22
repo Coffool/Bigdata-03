@@ -1,6 +1,8 @@
 import type { Track, Album, Artist, Genre, Customer, CustomerCreate, CheckoutData, Invoice, CheckoutResponse, CustomerResponse } from './types';
 
-const API_BASE_URL = 'http://localhost:8000'; // Ajusta la URL según tu configuración
+// Leer la URL base de la API desde las variables de entorno
+// En producción/Docker, usar /api (proxy de nginx), en desarrollo usar http://localhost:8000
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 class ApiService {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
