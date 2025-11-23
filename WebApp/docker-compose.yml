@@ -8,8 +8,16 @@ services:
     container_name: chinook_backend
     env_file:
       - .env
-    network_mode: host
+    ports:
+      - "8000:8000"
+    networks:
+      - chinook-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   frontend:
     build:
@@ -20,5 +28,14 @@ services:
     container_name: chinook_frontend
     env_file:
       - .env
-    network_mode: host
+    ports:
+      - "80:80"
+    networks:
+      - chinook-network
+    depends_on:
+      - backend
     restart: unless-stopped
+
+networks:
+  chinook-network:
+    driver: bridge
