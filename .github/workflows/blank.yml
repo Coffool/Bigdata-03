@@ -1,36 +1,254 @@
-# This is a basic workflow to help you get started with Actions
+name: CI/CD Pipeline - Bigdata-03
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: ["main"]
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+  test:
+    name: 🧪 Test & Build
     runs-on: ubuntu-latest
+    environment: development
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      - name: 🧰 Checkout repository
+        uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: ⚡ Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: 📦 Install dependencies
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+
+      - name: 🧪 Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          echo "Running all tests..."
+          pytest tests/ -v --maxfail=5 --disable-warnings --tb=short
+          echo "✅ All tests passed!"
+
+      - name: 📊 Generate coverage report
+        if: always()
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pytest tests/ --cov=. --cov-report=xml --cov-report=html --cov-report=term
+          echo "✅ Coverage report generated!"
+
+      - name: 📤 Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            htmlcov/
+            coverage.xml
+
+      - name: 📦 Package artifacts
+        run: |
+          echo "Packaging ETL scripts..."
+          mkdir -p artifacts
+          cp -r etls/ artifacts/
+          cp -r data_lake.py crawler.py artifacts/
+          cp emr_clustering.py setup_emr_s3.py artifacts/
+          cp requirements.txt artifacts/
+          tar -czf artifacts.tar.gz artifacts/
+          echo "✅ Artifacts packaged!"
+
+      - name: 📤 Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package
+          path: artifacts.tar.gz
+          retention-days: 30
+
+  deploy-data-lake:
+    name: 🗄️ Deploy Data Lake
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: 🧰 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 📦 Install boto3
+        run: |
+          pip install boto3 botocore
+
+      - name: 🔐 Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: 🗄️ Create S3 Data Lake structure
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+          DATA_LAKE_BUCKET: ${{ secrets.DATA_LAKE_BUCKET_NAME }}
+        run: |
+          echo "🗄️ Creating Data Lake structure in S3..."
+          python data_lake.py
+          echo "✅ Data Lake structure created!"
+
+      - name: 🕷️ Create Glue Crawlers
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+          DATA_LAKE_BUCKET: ${{ secrets.DATA_LAKE_BUCKET_NAME }}
+          GLUE_DATABASE: ${{ secrets.GLUE_DATABASE_NAME }}
+          GLUE_ROLE_ARN: ${{ secrets.GLUE_ROLE_ARN }}
+        run: |
+          echo "🕷️ Creating Glue Crawlers..."
+          python crawler.py
+          echo "✅ Crawlers created!"
+
+  deploy-emr-scripts:
+    name: 🚀 Deploy EMR Scripts to S3
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: 🧰 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 📥 Download deployment package
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
+          path: .
+
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 📦 Install dependencies
+        run: |
+          pip install boto3 botocore
+
+      - name: 🔐 Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: 📤 Upload EMR clustering script to S3
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+          EMR_SCRIPTS_BUCKET: ${{ secrets.EMR_SCRIPTS_BUCKET_NAME }}
+        run: |
+          echo "📤 Uploading EMR clustering script to S3..."
+          python setup_emr_s3.py \
+            --bucket-name ${EMR_SCRIPTS_BUCKET} \
+            --script-path emr_clustering.py \
+            --region us-east-1
+          echo "✅ EMR scripts uploaded!"
+
+  deploy-etls:
+    name: 📊 Deploy ETL Scripts
+    runs-on: ubuntu-latest
+    needs: [test, deploy-data-lake]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: 🧰 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 📥 Download deployment package
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
+          path: .
+
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 📦 Install dependencies
+        run: |
+          pip install boto3 botocore pandas pymysql pyarrow
+
+      - name: 🔐 Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: 📤 Upload ETL scripts to S3
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+          DATA_LAKE_BUCKET: ${{ secrets.DATA_LAKE_BUCKET_NAME }}
+        run: |
+          echo "📤 Uploading ETL scripts to S3..."
+          tar -xzf artifacts.tar.gz
+          
+          # Upload ETL scripts
+          aws s3 sync artifacts/etls/ s3://${DATA_LAKE_BUCKET}/scripts/etls/ \
+            --exclude "*.pyc" \
+            --exclude "__pycache__/*"
+          
+          echo "✅ ETL scripts uploaded!"
+
+      - name: 📋 List deployed resources
+        run: |
+          echo "📋 Listing deployed resources..."
+          echo ""
+          echo "=== S3 Buckets ==="
+          aws s3 ls
+          echo ""
+          echo "=== Data Lake Structure ==="
+          aws s3 ls s3://${DATA_LAKE_BUCKET}/ --recursive | head -20
+          echo ""
+          echo "=== Glue Crawlers ==="
+          aws glue list-crawlers --query "CrawlerNames" --output table
+          echo ""
+          echo "✅ Deployment summary complete!"
+        env:
+          DATA_LAKE_BUCKET: ${{ secrets.DATA_LAKE_BUCKET_NAME }}
+
+  notify:
+    name: 📢 Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [deploy-data-lake, deploy-emr-scripts, deploy-etls]
+    if: always() && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: 📊 Check deployment status
+        run: |
+          echo "🎉 Deployment completed!"
+          echo "Status: ${{ needs.deploy-data-lake.result }}"
+          echo "Data Lake: ${{ needs.deploy-data-lake.result }}"
+          echo "EMR Scripts: ${{ needs.deploy-emr-scripts.result }}"
+          echo "ETL Scripts: ${{ needs.deploy-etls.result }}"
