@@ -2,6 +2,12 @@ import pytest
 import boto3
 from moto import mock_aws
 from botocore.exceptions import ClientError
+import sys
+import os
+
+# Agregar el directorio raíz del proyecto al path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from crawler import setup_glue_crawler
 
 

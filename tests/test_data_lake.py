@@ -2,6 +2,12 @@ import pytest
 import boto3
 from moto import mock_aws
 from botocore.exceptions import ClientError
+import sys
+import os
+
+# Agregar el directorio raíz del proyecto al path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from data_lake import create_data_lake
 
 
@@ -19,7 +25,7 @@ class TestDataLake:
         # Verificar resultado
         assert result['bucket_created'] == True
         assert result['bucket_name'] == bucket_name
-        assert len(result['folders_created']) == 9  # Todas las carpetas esperadas
+        assert len(result['folders_created']) == 17  # Todas las carpetas esperadas (raw + processed + analytics)
         assert len(result['errors']) == 0
         
         # Verificar que el bucket existe
@@ -42,23 +48,22 @@ class TestDataLake:
         # El bucket ya existe, pero las carpetas se crean igual
         # Nota: moto puede comportarse diferente que AWS real
         assert result['bucket_name'] == bucket_name
-        assert len(result['folders_created']) == 9
+        assert len(result['folders_created']) == 17
         assert len(result['errors']) == 0
     
     def test_folder_structure_creation(self):
         """Test que verifica la creación de la estructura de carpetas"""
         bucket_name = 'test-chinook-datalake'
         
-        # Estructura de carpetas esperada
+        # Usar carpetas reales de constants.py
+        from etls import constants
         expected_folders = [
-            'raw/ventas/',
-            'raw/tracks/',
-            'raw/artistas/',
-            'raw/clientes/',
-            'processed/ventas_por_dia/',
-            'processed/artista_mes/',
-            'processed/dia_semana/',
-            'processed/mes_ventas/',
+            constants.RAW_INVOICE, constants.RAW_INVOICE_LINE, constants.RAW_TRACK,
+            constants.RAW_ALBUM, constants.RAW_ARTIST, constants.RAW_CUSTOMER,
+            constants.RAW_EMPLOYEE, constants.RAW_GENRE, constants.RAW_MEDIA_TYPE,
+            constants.RAW_PLAYLIST, constants.RAW_PLAYLIST_TRACK, constants.RAW_CUSTOMER_EMPLOYEE_HISTORY,
+            constants.PROC_VENTAS_DIA, constants.PROC_ARTISTA_MES,
+            constants.PROC_DIA_SEMANA, constants.PROC_MES_VENTAS,
             'analytics/informes/'
         ]
         

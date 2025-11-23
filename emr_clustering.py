@@ -59,7 +59,7 @@ class CustomerClusteringPipeline:
         Returns:
             DataFrame con los datos
         """
-        full_path = f"s3://{self.s3_bucket}/{path}"
+        full_path = f"s3a://{self.s3_bucket}/{path}"
         logger.info(f"Leyendo datos desde: {full_path}")
         return self.spark.read.parquet(full_path)
     

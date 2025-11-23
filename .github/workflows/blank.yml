@@ -112,7 +112,7 @@ jobs:
           DATA_LAKE_BUCKET: ${{ secrets.DATA_LAKE_BUCKET_NAME }}
         run: |
           echo "🗄️ Creating Data Lake structure in S3..."
-          python data_lake.py
+          python -c "from data_lake import create_data_lake; result = create_data_lake('${{ secrets.DATA_LAKE_BUCKET_NAME }}'); print(f'Created {len(result[\"folders_created\"])} folders')"
           echo "✅ Data Lake structure created!"
 
       - name: 🕷️ Create Glue Crawlers
@@ -123,7 +123,7 @@ jobs:
           GLUE_ROLE_ARN: ${{ secrets.GLUE_ROLE_ARN }}
         run: |
           echo "🕷️ Creating Glue Crawlers..."
-          python crawler.py
+          python -c "from crawler import setup_glue_crawler; result = setup_glue_crawler('${{ secrets.DATA_LAKE_BUCKET_NAME }}', '${{ secrets.GLUE_DATABASE_NAME }}', 'chinook-crawler', '${{ secrets.GLUE_ROLE_ARN }}'); print(f'Database: {result[\"database_created\"]}, Crawler: {result[\"crawler_created\"]}')"  
           echo "✅ Crawlers created!"
 
   deploy-emr-scripts:
@@ -196,7 +196,8 @@ jobs:
 
       - name: 📦 Install dependencies
         run: |
-          pip install boto3 botocore pandas pymysql pyarrow
+          pip install -r requirements.txt
+          pip install boto3 botocore
 
       - name: 🔐 Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -214,10 +215,14 @@ jobs:
           echo "📤 Uploading ETL scripts to S3..."
           tar -xzf artifacts.tar.gz
           
-          # Upload ETL scripts
+          # Upload ETL scripts and constants
           aws s3 sync artifacts/etls/ s3://${DATA_LAKE_BUCKET}/scripts/etls/ \
             --exclude "*.pyc" \
             --exclude "__pycache__/*"
+          
+          # Upload support scripts
+          aws s3 cp artifacts/data_lake.py s3://${DATA_LAKE_BUCKET}/scripts/
+          aws s3 cp artifacts/crawler.py s3://${DATA_LAKE_BUCKET}/scripts/
           
           echo "✅ ETL scripts uploaded!"
 
