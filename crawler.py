@@ -19,7 +19,7 @@ def setup_glue_crawler(bucket_name='chinook-datalake',
         dict: Resultado de la operación con detalles de creación
     """
     # Crear cliente Glue
-    glue = boto3.client('glue')
+    glue = boto3.client('glue', region_name='us-east-1')
     
     result = {
         'database_created': False,
@@ -73,8 +73,3 @@ def setup_glue_crawler(bucket_name='chinook-datalake',
         raise e
     
     return result
-
-
-if __name__ == '__main__':
-    # Solo ejecutar si se llama directamente
-    setup_glue_crawler()

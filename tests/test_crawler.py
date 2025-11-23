@@ -5,10 +5,10 @@ from botocore.exceptions import ClientError
 from crawler import setup_glue_crawler
 
 
-@mock_aws 
 class TestCrawler:
     """Tests para el módulo crawler.py"""
     
+    @mock_aws
     def test_setup_glue_crawler_success(self):
         """Test que verifica la creación exitosa completa usando setup_glue_crawler"""
         database_name = 'test_chinook_db'
@@ -38,6 +38,7 @@ class TestCrawler:
         crawler_names = [crawler['Name'] for crawler in response['Crawlers']]
         assert crawler_name in crawler_names
     
+    @mock_aws
     def test_database_already_exists(self):
         """Test que verifica el comportamiento cuando la base de datos ya existe"""
         database_name = 'test_chinook_db'
@@ -57,6 +58,7 @@ class TestCrawler:
         assert result2['database_created'] == False
         assert result2['crawler_created'] == True
     
+    @mock_aws
     def test_function_returns_correct_structure(self):
         """Test que verifica que la función retorna la estructura correcta"""
         database_name = 'test_chinook_db_2'
